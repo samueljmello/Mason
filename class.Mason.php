@@ -5,6 +5,7 @@
 *
 * @package 	Mason
 * @author 	Samuel Mello of Clark Nidkel Powell (http://clarknikdelpowell.com
+* @version 	1.2
 *
 * This program is free software; you can redistribute it and/or modify
 * it under the terms of the GNU General Public License, version 2 (or later),
@@ -22,7 +23,7 @@
 class Mason {
 
 	/**
-	* Private variables (only accessible within this or child classes)
+	* protected variables (only accessible within this or child classes)
 	*
 	* @var 	MySQL 	$connection 		Stored connection to the database
 	* @var 	array 	$connection_vars 	Array of connection parameters to use in connect_sql()
@@ -30,15 +31,16 @@ class Mason {
 	* @var 	array 	$status 		 
 	*/
 
-	private $connection = FALSE;
-	private $connection_vars = array(
+	protected $connection = FALSE;
+	protected $connection_vars = array(
 		'host' 	=> '' 		/* database host address */
 	,	'user' 	=> '' 		/* username to authenticate with */
 	,	'pass' 	=> '' 		/* password to authenticate with */
 	,	'db' 	=> '' 		/* database to select */
+	,	'ext' 	=> FALSE	/* when extending, set to TRUE if you want the load_options function to return it's results */
 	,	'debug' => FALSE 	/* turns on or off debugging */
 	);
-	private $messages = array(
+	protected $messages = array(
 		0 	=> 'Class has not been instantiated yet'
 	,	200 => 'The task has completed successfully'
 	, 	300 => 'Performing the task requested has failed'
@@ -68,21 +70,27 @@ class Mason {
 	/**
 	* Initial constructor: creates connection
 	*
+	* @since 	1.0
 	* @param 	array 	$args 	Optional arguments to use for the DB connection
 	* @return 	boolean 	 	Whether the connection was successful
 	*/
 	public function __construct( $args = array() ) {
 		$this->debug( $args );
+		$return = FALSE;
 		$conn = $this->reconnect( $args );
 		if ( $conn ) { 
 			$this->load_tables();
-			$this->load_options();
+			$options = $this->load_options();
+			if ( $args['ext'] === TRUE ) { $return = $options; }
 		}
+		else { $return = $conn; }
 		return $conn;
 	}
 
 	/**
 	* Destructor: destroys DB connection
+	*
+	* @since 	1.0
 	* @return 	null
 	*/
 	public function __destruct() {
@@ -94,9 +102,11 @@ class Mason {
 
 	/**
 	* Turns debugging on or off using the args setting passed from __construct
+	*
+	* @since 	1.0
 	* @return 	null
 	*/
-	private function debug( $args ) {
+	protected function debug( $args ) {
 		if ( isset($args['debug']) && $args['debug'] === TRUE ) {
 			error_reporting(E_ALL | E_STRICT);
 			ini_set('display_errors', 1);
@@ -108,6 +118,7 @@ class Mason {
 	* Connection intermediary to merge optional arguments and perform connection
 	* - Can be used to retry connection if needed (hence reconnect name)
 	*
+	* @since 	1.0
 	* @param 	array 	$args 	Optional arguments to use for the DB connection
 	* @return 	boolean		 	Whether the connection was successful or not
 	*/
@@ -122,7 +133,7 @@ class Mason {
 	}
 
 	/**
-	* Optional function to run at instantiation.
+	* Optional function to run at instantiation. Useful when extending this class and you need something to run during __construct()
 	*/
 	public function load_options() {
 		return;
@@ -131,33 +142,45 @@ class Mason {
 	/**
 	* Sets the status code and message using the prebuilt messages and included message
 	*
+	* @since 	1.0
 	* @param 	int 	$id 		The error code ID (200, 500, etc [see $messages for all])
 	* @param 	string 	$message 	An optional message to use
 	* @param 	boolean $append 	Whether to append or replace the system message with optional one
 	* @return 	array				Status array with code and message
 	*/
-	private function set_status( $id, $message = '', $append = FALSE ) {
+	protected function set_status( $id, $message = '', $append = FALSE ) {
 		$retmsg = $this->messages[$id];
 		if ( strlen($retmsg) == 0 ) { $retmsg = $this->messages[500]; }
 		if ( strlen($message) > 0 ) {
 			if ( $append === TRUE ) { $retmsg .= ': ' . $message; }
 			else { $retmsg = $message; }
 		}
+		$backtraces = debug_backtrace();
+		$functions = '';
+		foreach ( $backtraces as $backtrace ) { 
+			if ( $backtrace['function'] !== 'set_status' ) {
+				$functions = trim($backtrace['class'] . '->' . $backtrace['function'] . ', ' . $functions); 
+			}
+		}
+		$functions = substr($functions,0,strlen($functions)-1);
+
 		$status = array(
 			'code' => $id
 		,	'message' => $retmsg 
+		,	'operation' => $functions
 		);
-		$this->status[] = $status;
+		array_unshift($this->status,  $status);
 		return $this->status;
 	}
 
 	/**
 	* Connect to MySQL server
 	*
+	* @since 	1.0
 	* @param 	array 	$settings 	The merged array passed from either __construct() or reconnect()
 	* @return 	boolean 			Whether the connection was succesful or not (passed back to parent)
 	*/
-	private function connect_sql( $settings ) {
+	protected function connect_sql( $settings ) {
 		@$conn = new mysqli( 
 			$settings['host']
 		,	$settings['user']
@@ -179,11 +202,12 @@ class Mason {
 	* Executes a query against the database with the stored connection
 	* - Can be used externally for manual queries
 	*
+	* @since 	1.0
 	* @param 	string 	$sql 	The SQL statement to execute
 	* @return 	mixed 			False when failed, result set on success
 	*/
 	public function run_query( $sql, $type = 'select' ) {
-		$this->queries[] = $sql;
+		array_unshift($this->queries, $sql);
 		$conn = $this->connection;
 		if ( $conn ) {
 
@@ -209,7 +233,7 @@ class Mason {
 					$result['rows'] = $rows;
 				}
 				elseif ( $is_object === TRUE && $type !== 'select' ) { $result = 1; }
-				$this->results[] = $result;
+				array_unshift($this->results, $result);
 				$this->set_status(200);
 				return $result;
 			}
@@ -225,9 +249,12 @@ class Mason {
 	}
 
 	/**
-	* Loads tables from DB for validation - UNDER CONSTRUCTION ()
+	* Loads tables from DB for validation
+	*
+	* @since 	1.0
+	* @return 	boolean 	FALSE on fail, TRUE on success
 	*/
-	private function load_tables() {
+	protected function load_tables() {
 		$conn = $this->connection;
 		if ( $conn ) {
 			$execute = $conn->query("SELECT * FROM information_schema.tables", MYSQLI_USE_RESULT);
@@ -257,10 +284,11 @@ class Mason {
 	/**
 	* Validates table names passed with tables loaded from the database
 	*
+	* @since 	1.0
 	* @param 	string 		$table 	The table name to check
 	* @return 	boolean 			TRUE on success, FALSE no failure
 	*/
-	private function is_valid_table( $table ) {
+	protected function is_valid_table( $table ) {
 		$tables = $this->tables;
 		if ( is_string($table) || strlen($table) > 0 && count($tables) > 0 && in_array($table,$tables) ) { return TRUE; }
 		else { return FALSE; };
@@ -269,11 +297,12 @@ class Mason {
 	/**
 	* Gets the requested var from child functions
 	*
+	* @since 	1.0
 	* @param 	string 		$what 	The variable to get
 	* @param 	boolean 	$all 	If is array, whether or not to get all entries, or just the most recent
 	* @return 	mixed 				FALSE on failure, the requested variable on success
 	*/
-	private function get_var( $what, $all = FALSE ) {
+	protected function get_var( $what, $all = FALSE ) {
 		if ( isset($this->$what) ) {
 			if ( $all === FALSE && is_array($this->$what) ) { 
 				$arr = $this->$what;
@@ -292,6 +321,7 @@ class Mason {
 	/**
 	* Gets the stored result set generated from run_query()
 	*
+	* @since 	1.0
 	* @param 	boolean 	$all 	Whether or not to get all results, or just the recent one
 	* @return 	mixed 				The results of get_var()
 	*/
@@ -302,6 +332,7 @@ class Mason {
 	/**
 	* Gets the stored queries recorded when using run_query()
 	*
+	* @since 	1.0
 	* @param 	boolean 	$all 	Whether or not to get all queries, or just the recent one
 	* @return 	mixed 				The results of get_var()
 	*/
@@ -312,6 +343,7 @@ class Mason {
 	/**
 	* Gets the current status array for reading
 	*
+	* @since 	1.0
 	* @return 	array 	The status array retreived
 	*/
 	public function get_status( $all = FALSE ) {
@@ -322,11 +354,12 @@ class Mason {
 	/**
 	* Takes values passed into it and performs validation / stripping based on type
 	*
+	* @since 	1.0
 	* @param 	mixed 	$value 	The value to parse
 	* @param 	string 	$type 	The type of parse to perform (default: text)
 	* @return 	mixed 			The parsed value
 	*/
-	private function parse_val( $value, $type = 'text' ) {
+	protected function parse_val( $value, $type = 'text' ) {
 		$replaced = $value;
 		$replaced = $this->connection->real_escape_string( $replaced );
 		switch ($type) {
@@ -350,23 +383,11 @@ class Mason {
 	/**
 	* Builds an SQL select statement and returns the results
 	*
+	* @since 	1.0
 	* @param 	string 	$table 		The table name to select from
 	* @param 	array 	$where 		An associative array of data or a string
 	* @param 	mixed 	$columns 	An array of column names, a string of comma separated column names, or a single column name (or *) to return
 	* @return 	mixed 				FALSE on failure, result set on success
-	*
-	* Example $where array:
-	* 
-	* array(
-	* 	'correlation' => 'AND'
-	* ,	'columns' 	=> array(
-	* 		'column_name' => array(
-	*	 		'operator' 	=> '='
-	* 		,	'value' 	=> 'test'
-	*	 	, 	'type' 		=> 'text'
-	* 		)
-	* 	)
-	* );
 	*/
 	public function select( $table, $where = FALSE, $columns = '*' ) {
 		if ( !$this->is_valid_table($table) ) {
@@ -415,17 +436,11 @@ class Mason {
 	/**
 	* Builds an SQL update statement modify rows based on ID
 	*
+	* @since 	1.0
 	* @param 	string 	$table 	The table name to update
 	* @param 	int 	$ids 	An array of column_name=>ID to delete
 	* @param 	array 	$vals 	An associative array of column_name => value pairs to update
 	* @return 	mixed 			FALSE on failure to create SQL, result set on success
-	*
-	* Example $ids array:
-	*
-	* $ids = array(
-	* 	'column' => 'ID'
-	* 	'values' => array(1,2,3)
-	* );
 	*/
 	public function update( $table, $ids, $vals ) {
 		if ( !$this->is_valid_table($table) ) {
@@ -461,6 +476,7 @@ class Mason {
 	/**
 	* Builds an SQL insert statement to create new rows
 	*
+	* @since 	1.0
 	* @param 	string 	$table 	The table name to add the row into
 	* @param 	array 	$vals 	An associative array of column_name => value pairs to insert
 	* @return 	mixed 			FALSE on failure to create SQL, result set on success
@@ -496,16 +512,10 @@ class Mason {
 	/**
 	* Builds an SQL insert statement to delete rows
 	*
+	* @since 	1.0
 	* @param 	string 	$table 	The table name to add the row into
 	* @param 	int 	$ids 	An array of column_name=>ID to delete
 	* @return 	mixed 			FALSE on failure to create SQL, result set on success
-	*
-	* Example $ids array:
-	*
-	* $ids = array(
-	* 	'column' => 'ID'
-	* 	'values' => array(1,2,3)
-	* );
 	*/
 	public function delete( $table, $ids ) {
 		if ( !$this->is_valid_table($table) ) {
@@ -525,5 +535,51 @@ class Mason {
 		}
 		$result = $this->run_query($sql);
 		return $result;
+	}
+
+	/**
+	* Builds an SQL create statement to create tables
+	*
+	* @since 	1.1
+	* @param 	array 	$tables 	An array of tables to create
+	* @return 	mixed 			FALSE on failure to create SQL, result set on success
+	*/
+	public function create( $tables ) {
+		$existing_tables = $this->tables;
+		$return = FALSE;
+		if ( count($tables) > 0 ) {
+			$i = 0;
+			foreach ( $tables as $table => $attributes ) {
+				if ( !in_array($this->table_prefix . $table, $existing_tables) ) {
+					$sql = "CREATE TABLE `" . $this->table_prefix . $table . "` (";
+					$begin = TRUE;
+					foreach ( $attributes['columns'] as $column => $properties ) {
+						$comma = '';
+						if ( $begin === FALSE ) { $comma = ', '; }
+						$sql .= $comma . "`" . $column . "` " . $properties;
+						$begin = FALSE;
+					}
+					if ( isset($attributes['primary_key']) && strlen($attributes['primary_key']) > 0 ) {
+						$sql .= ", PRIMARY KEY (`" . $attributes['primary_key'] . "`)";
+					}
+					if ( isset($attributes['indexes']) && count($attributes['indexes']) > 0 ) {
+						$sql .= ", INDEX `alt_index` (";
+						$begin = TRUE;
+						foreach ( $attributes['indexes'] as $index => $order ) {
+							$comma = '';
+							if ( $begin === FALSE ) { $comma = ', '; }
+							$sql .= $comma  . "`" . $index . "` " . $order;
+							$begin = FALSE;
+						}
+						$sql .= ")";
+					}
+					$sql .= ");";
+					$return = $this->run_query($sql,'create');
+					$i++;
+				}
+			}
+			if ($i==0) { $return = TRUE; }
+		}
+		return $return;
 	}
 }
