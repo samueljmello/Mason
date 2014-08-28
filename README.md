@@ -18,20 +18,26 @@ $tables  = Array of tables in database<br/>
 
 <b>Public functions:</b>
 
+
 <em>reconnect( $args )</em><br/>
 Used to initiate connection. Happens on __construct() but can be used later to reconnect if needed.
 
+
 <em>get_status() </em><br/>
-Gets the last recorded status message.
+Gets the stored array of statuses during session
+
 
 <em>run_query( $sql, $type ) </em><br/>
 Master function to run queries. Runs when using insert, update, etc; but can be used to execute custom SQL strings.
 
+
 <em>get_results( $all )</em><br/>
 Gets stored results from session. $all is optional and can be used to get all recorded result sets.
 
+
 <em>get_queries( $all )</em><br/>
 Gets stored queries from session. $all can be used to get all, or just the last one will be returned.
+
 
 <em>select( $table, $where, $columns )</em><br/>
 Used to build a select statement. $where and $columns are optional and can be either string or array. See examples:
@@ -68,6 +74,7 @@ $columns = array(
 );
 ```
 
+
 <em>update( $table, $ids, $vals )</em><br/>
 Used to build and excecute an update statement. All parameters required. See examples:
 
@@ -87,6 +94,7 @@ $vals = array(
 )
 ```
 
+
 <em>insert( $table, $vals )</em><br/>
 Used to build and excecute an insert statement. All parameters required. If you fail to include a column that is required, an error will be returned. See examples:
 
@@ -98,6 +106,7 @@ $vals = array(
 ,	'column_3' => 'value_3'
 );
 ```
+
 
 <em>delete( $table, $ids )</em><br/>
 Used to build and excecute a delete statement. All parameters required. See examples:
@@ -111,6 +120,37 @@ $ids = array(
 	)
 );
 ```
+
+
+<em>create( $tables )</em><br/>
+Used to create tables from an array of tables and corresponding key data
+
+```php
+$tables = array(
+	'table_1' => array(
+		'primary_key' => 'ID'
+	,	'index' => array(
+			'column_3'
+		,	'column_4'
+		)
+	,	'columns' => array(
+			'column_1' => 'INT NOT NULL AUTO_INCREMENT'
+		,	'column_2' => 'TEXT'
+		,	'column_3' => 'INT NOT NULL'
+		,	'column_4' => 'INT NOT NULL'
+		)
+	)
+,	'table_2' => array(
+		'primary_key' => 'ID'
+	,	'columns' => array(
+			'ID' => 'INT NOT NULL AUTO_INCREMENT'
+		,	'ip_address' => 'TEXT NULL'
+		,	'created_on' => 'TIMESTAMP NOT NULL DEFAULT CURRENT_TIMESTAMP ON UPDATE CURRENT_TIMESTAMP'
+		)
+	)
+);
+```
+
 
 Examples
 =====
