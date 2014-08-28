@@ -456,12 +456,10 @@ class Mason {
 			return FALSE;
 		}
 		$sql = "UPDATE " . $table . " SET ";
-		$begin = TRUE;
 		foreach ( $vals as $key=>$val ) {
-			if ( $begin === FALSE ) { $sql .= ', '; }
-			$sql .= $key . " = " . $this->parse_val( $val );
-			$begin = FALSE;
+			$sql .= $key . " = " . $this->parse_val( $val ) . ",";
 		}
+		$sql = substr($sql,0,(strlen($sql)-1));
 		$sql .= " WHERE ";
 		$begin = TRUE;
 		foreach ( $ids['values'] as $val ) {
@@ -491,19 +489,15 @@ class Mason {
 			return FALSE;
 		}
 		$sql = "INSERT INTO " . $table . " (";
-		$begin = TRUE;
 		foreach ( $vals as $key=>$val ) {
-			if ( $begin === FALSE ) { $sql .= ', '; }
-			$sql .= $key;
-			$begin = FALSE;
+			$sql .= $key . ",";
 		}
+		$sql = substr($sql,0,(strlen($sql)-1));
 		$sql .= ") VALUES (";
-		$begin = TRUE;
 		foreach ( $vals as $key=>$val ) {
-			if ( $begin === FALSE ) { $sql .= ', '; }
-			$sql .= $this->parse_val( $val ) . " ";
-			$begin = FALSE;
+			$sql .= $this->parse_val( $val ) . ",";
 		}
+		$sql = substr($sql,0,(strlen($sql)-1));
 		$sql .= ")";
 		$result = $this->run_query($sql);
 		return $result;
@@ -552,25 +546,19 @@ class Mason {
 			foreach ( $tables as $table => $attributes ) {
 				if ( !in_array($this->table_prefix . $table, $existing_tables) ) {
 					$sql = "CREATE TABLE `" . $this->table_prefix . $table . "` (";
-					$begin = TRUE;
-					foreach ( $attributes['columns'] as $column => $properties ) {
-						$comma = '';
-						if ( $begin === FALSE ) { $comma = ', '; }
-						$sql .= $comma . "`" . $column . "` " . $properties;
-						$begin = FALSE;
+					foreach ( $attributes['columns'] as $column => $properties ) { 
+						$sql .= $comma . "`" . $column . "` " . $properties . ",";
 					}
+					$sql = substr($sql,0,(strlen($sql)-1));
 					if ( isset($attributes['primary_key']) && strlen($attributes['primary_key']) > 0 ) {
 						$sql .= ", PRIMARY KEY (`" . $attributes['primary_key'] . "`)";
 					}
 					if ( isset($attributes['indexes']) && count($attributes['indexes']) > 0 ) {
 						$sql .= ", INDEX `alt_index` (";
-						$begin = TRUE;
 						foreach ( $attributes['indexes'] as $index => $order ) {
-							$comma = '';
-							if ( $begin === FALSE ) { $comma = ', '; }
-							$sql .= $comma  . "`" . $index . "` " . $order;
-							$begin = FALSE;
+							$sql .= "`" . $index . "` " . $order .",";
 						}
+						$sql = substr($sql,0,(strlen($sql)-1));
 						$sql .= ")";
 					}
 					$sql .= ");";
