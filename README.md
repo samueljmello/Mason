@@ -10,30 +10,30 @@ Usage
 <b>Public variables:</b>
 
 <em>
-$status  = Array of last recorded status message</br>
-$results = Array of all results retrieved in session</br>
-$queries = Array of all queries used in session</br>
-$tables  = Array of tables in database</br>
+$status  = Array of last recorded status message<br/>
+$results = Array of all results retrieved in session<br/>
+$queries = Array of all queries used in session<br/>
+$tables  = Array of tables in database<br/>
 </em>
 
 <b>Public functions:</b>
 
-<em>reconnect( $args )</em></br>
+<em>reconnect( $args )</em><br/>
 Used to initiate connection. Happens on __construct() but can be used later to reconnect if needed.
 
-<em>get_status() </em></br>
+<em>get_status() </em><br/>
 Gets the last recorded status message.
 
-<em>run_query( $sql, $type ) </em></br>
+<em>run_query( $sql, $type ) </em><br/>
 Master function to run queries. Runs when using insert, update, etc; but can be used to execute custom SQL strings.
 
-<em>get_results( $all )</em></br>
+<em>get_results( $all )</em><br/>
 Gets stored results from session. $all is optional and can be used to get all recorded result sets.
 
-<em>get_queries( $all )</em></br>
+<em>get_queries( $all )</em><br/>
 Gets stored queries from session. $all can be used to get all, or just the last one will be returned.
 
-<em>select( $table, $where, $columns )</em></br>
+<em>select( $table, $where, $columns )</em><br/>
 Used to build a select statement. $where and $columns are optional and can be either string or array. See examples:
 
 ```php
@@ -68,10 +68,10 @@ $columns = array(
 );
 ```
 
-<em>update( $table, $ids, $vals )</em></br>
+<em>update( $table, $ids, $vals )</em><br/>
 Used to build and excecute an update statement. All parameters required. See examples:
 
-'''php
+```php
 $ids = array(
 	'column' => 'ID' 	// unique ID column
 	'values' => array(  // Array of ID's to delete
@@ -85,24 +85,24 @@ $vals = array(
 	'column_1' => 'value_1'
 ,	'column_2' => 'value_2'
 )
-'''
+```
 
-<em>insert( $table, $vals )</em></br>
+<em>insert( $table, $vals )</em><br/>
 Used to build and excecute an insert statement. All parameters required. If you fail to include a column that is required, an error will be returned. See examples:
 
-'''php
+```php
 // array of column name => values to insert
 $vals = array(
 	'column_1' => 'value_1'
 ,	'column_2' => 'value_2'
 ,	'column_3' => 'value_3'
 );
-'''
+```
 
-<em>delete( $table, $ids )</em></br>
+<em>delete( $table, $ids )</em><br/>
 Used to build and excecute a delete statement. All parameters required. See examples:
 
-'''php
+```php
 $ids = array(
 	'column' => 'ID' 	// unique ID column
 	'values' => array(  // Array of ID's to delete
@@ -110,12 +110,12 @@ $ids = array(
 	,	'2'
 	)
 );
-'''
+```
 
 Examples
 =====
 
-'''php
+```php
 require_once('class.Mason.php');
 
 $args = array(
@@ -153,4 +153,4 @@ if ( $result && $result['count'] > 0 ) {
 else {
 	// no results found
 }
-'''
+```
