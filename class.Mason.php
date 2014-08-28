@@ -74,7 +74,10 @@ class Mason {
 	public function __construct( $args = array() ) {
 		$this->debug( $args );
 		$conn = $this->reconnect( $args );
-		if ( $conn ) { $this->load_tables(); }
+		if ( $conn ) { 
+			$this->load_tables();
+			$this->load_options();
+		}
 		return $conn;
 	}
 
@@ -119,6 +122,13 @@ class Mason {
 	}
 
 	/**
+	* Optional function to run at instantiation.
+	*/
+	public function load_options() {
+		return;
+	}
+
+	/**
 	* Sets the status code and message using the prebuilt messages and included message
 	*
 	* @param 	int 	$id 		The error code ID (200, 500, etc [see $messages for all])
@@ -137,16 +147,7 @@ class Mason {
 			'code' => $id
 		,	'message' => $retmsg 
 		);
-		$this->status = $status;
-		return $this->status;
-	}
-
-	/**
-	* Gets the current status array for reading
-	*
-	* @return 	array 	The status array retreived
-	*/
-	public function get_status() {
+		$this->status[] = $status;
 		return $this->status;
 	}
 
@@ -196,18 +197,18 @@ class Mason {
 					$result = $execute; 
 					$is_object = TRUE;
 				}
-				if ( $is_object === TRUE ) {
-					$rows = array();
+				$rows = array();
+				if ( $is_object === TRUE && $type == 'select' ) {
 					while ( $row = $result->fetch_assoc() ) { $rows[] = $row; }
 					if ( count($rows) > 0 ) { $num = $result->num_rows; }
+					$result->free();
 				}
-				$result->free();
 				if ( count($rows) > 0 ) { 
 					$result = array();
 					$result['count'] = $num;
 					$result['rows'] = $rows;
 				}
-				elseif ( $is_object === TRUE ) { $result = 1; }
+				elseif ( $is_object === TRUE && $type !== 'select' ) { $result = 1; }
 				$this->results[] = $result;
 				$this->set_status(200);
 				return $result;
@@ -274,7 +275,11 @@ class Mason {
 	*/
 	private function get_var( $what, $all = FALSE ) {
 		if ( isset($this->$what) ) {
-			if ( $all === FALSE && is_array($this->$what) ) { return $this->$what[0]; }
+			if ( $all === FALSE && is_array($this->$what) ) { 
+				$arr = $this->$what;
+				if ( count($arr) > 0 ) { return $arr[0]; }
+				else { return array(); } 
+			}
 			else { return $this->$what; }
 			$this->set_status(200);
 		}
@@ -302,6 +307,15 @@ class Mason {
 	*/
 	public function get_queries( $all = FALSE ) {
 		return $this->get_var( 'queries', $all );
+	}
+
+	/**
+	* Gets the current status array for reading
+	*
+	* @return 	array 	The status array retreived
+	*/
+	public function get_status( $all = FALSE ) {
+		return $this->get_var( 'status', $all );
 	}
 
 
