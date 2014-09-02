@@ -1,7 +1,10 @@
 Package Info
 =====
-
 Mason is a MySQL builder class for constructing queries and retrieving results using simple PHP arrays or strings when needed. Great for extending as a building block for another class.
+
+Version
+=====
+Current version is 1.3
 
 
 Usage
@@ -37,6 +40,17 @@ Gets stored results from session. $all is optional and can be used to get all re
 
 <em>get_queries( $all )</em><br/>
 Gets stored queries from session. $all can be used to get all, or just the last one will be returned.
+
+<em>parse_val( $value, $type)</em><br/>
+Parses values according to the provided type (defaults to text) and wraps + sql escapes them. Options include:
+
+```
+html = no filters applied
+text = uses strip_tags
+number = preg_replace all except numbers and .
+phone = preg_replace all except numbers and + (for international)
+date = can be fed date strings or timestamp. formats using date("Y-m-d H:i:s")
+```
 
 
 <em>select( $table, $where, $columns )</em><br/>
@@ -92,6 +106,20 @@ $vals = array(
 	'column_1' => 'value_1'
 ,	'column_2' => 'value_2'
 )
+
+OR
+
+// array of column name => properties to update
+$vals = array(
+	'column_1' => array(
+		'value' => 'value_1'
+	,	'type' 	=> 'text'
+	)
+,	'column_1' => array(
+		'value' => 'value_2'
+	,	'type' 	=> 'html'
+	)
+);
 ```
 
 
@@ -104,6 +132,20 @@ $vals = array(
 	'column_1' => 'value_1'
 ,	'column_2' => 'value_2'
 ,	'column_3' => 'value_3'
+);
+
+OR
+
+// array of column name => properties to insert
+$vals = array(
+	'column_1' => array(
+		'value' => 'value_1'
+	,	'type' 	=> 'text'
+	)
+,	'column_1' => array(
+		'value' => 'value_2'
+	,	'type' 	=> 'html'
+	)
 );
 ```
 

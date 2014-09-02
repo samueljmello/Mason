@@ -5,7 +5,7 @@
 *
 * @package 	Mason
 * @author 	Samuel Mello of Clark Nidkel Powell (http://clarknikdelpowell.com
-* @version 	1.2
+* @version 	1.3
 *
 * This program is free software; you can redistribute it and/or modify
 * it under the terms of the GNU General Public License, version 2 (or later),
@@ -211,28 +211,26 @@ class Mason {
 		$conn = $this->connection;
 		if ( $conn ) {
 
-			if ( $type !== 'select' ) { $execute = $conn->query( $sql ); }
-			else { $execute = $conn->query( $sql, MYSQLI_USE_RESULT ); }
-
+			$execute = $conn->query( $sql);
 			if ( $execute && !isset($execute->error)) {
-				$is_object = FALSE;
-				if ( $id = $conn->insert_id ) { $result = $id; }
-				else { 
-					$result = $execute; 
-					$is_object = TRUE;
+
+				$result = array(
+					'time' => date('m/d/Y g:i:sa')
+				,	'sql' => $sql
+				,	'results' => TRUE
+				,	'insert_id' => FALSE
+				);
+
+				if ( $id = $conn->insert_id ) { 
+					$result['insert_id'] = $id; 
 				}
-				$rows = array();
-				if ( $is_object === TRUE && $type == 'select' ) {
-					while ( $row = $result->fetch_assoc() ) { $rows[] = $row; }
-					if ( count($rows) > 0 ) { $num = $result->num_rows; }
-					$result->free();
+				if ( is_object($execute) && $num = $execute->num_rows ) {
+					$result['results'] = array();
+					while ( $row = $execute->fetch_assoc() ) { 
+						$result['results'][] = $row; 
+					}
+					$execute->free();
 				}
-				if ( count($rows) > 0 ) { 
-					$result = array();
-					$result['count'] = $num;
-					$result['rows'] = $rows;
-				}
-				elseif ( $is_object === TRUE && $type !== 'select' ) { $result = 1; }
 				array_unshift($this->results, $result);
 				$this->set_status(200);
 				return $result;
@@ -361,23 +359,42 @@ class Mason {
 	*/
 	protected function parse_val( $value, $type = 'text' ) {
 		$replaced = $value;
-		$replaced = $this->connection->real_escape_string( $replaced );
+		$quotes = TRUE;
 		switch ($type) {
 			default:
 			case 'html':
+				$replaced =  $replaced;
 				break;
 			case 'text':
 				$replaced = strip_tags($replaced);
 				break;
 			case 'number':
+				$replaced = preg_replace("/[^0-9\.\$]/","",$replaced);
+				$quotes = FALSE;
 				break;
 			case 'phone':
+				$replaced = preg_replace("/[^0-9\+]/","",$replaced);
 				break;
-			case 'timestamp':
+			case 'date':
+				$replaced = $this->mysql_date($replaced);
 				break;
 		}
-		$replaced = "'" . $replaced . "'";
+		$replaced = $this->connection->real_escape_string( $replaced );
+		if ( $quotes !== FALSE ) { $replaced = "'" . $replaced . "'"; }
 		return $replaced;
+	}
+
+	/**
+	* Formats the timestamp for MySQL
+	*
+	* @since 	1.3
+	* @param 	mixed 	$val 	The value to conver to date
+	* @return 	date 			The properly formatted date string
+	*/
+	protected function mysql_date( $val ) {
+		if ( is_numeric($val) ) { $settime = $val; }
+		elseif ( $timestamp = strtotime($val) ) { $settime = $timestamp; }
+		return date("Y-m-d H:i:s", $settime);
 	}
 	
 	/**
@@ -415,12 +432,12 @@ class Mason {
 				$begin = FALSE;
 			}
 		}
-		$sql .= " FROM " . $table . " ";
+		$sql .= " FROM " . $table;
 		if ( is_string($where) ) {
-			$sql .= "WHERE " . $where;
+			$sql .= " WHERE " . $where;
 		}
 		elseif ( is_array($where) ) {
-			$sql .= "WHERE ";
+			$sql .= " WHERE ";
 			$begin = TRUE;
 			foreach ( $where['columns'] as $column=>$attrs ) {
 				if ( !isset($attrs['operator']) ) { $attrs['operator'] = '='; }
@@ -464,7 +481,12 @@ class Mason {
 		$begin = TRUE;
 		foreach ( $ids['values'] as $val ) {
 			if ( $begin === FALSE ) { $sql .= ' OR '; }
-			$sql .= $ids['column'] . " = " . $this->parse_val( $val );
+			$type = 'html';
+			if ( is_array($val) ) {
+				$val = $val['value'];
+				$type = $val['type'];
+			}
+			$sql .= $ids['column'] . " = " . $this->parse_val( $val, $type );
 			$begin = FALSE;
 		}
 		$result = $this->run_query($sql);
@@ -495,7 +517,13 @@ class Mason {
 		$sql = substr($sql,0,(strlen($sql)-1));
 		$sql .= ") VALUES (";
 		foreach ( $vals as $key=>$val ) {
-			$sql .= $this->parse_val( $val ) . ",";
+			$type = 'html';
+			if ( is_array($val) ) {
+				$val = $val['value'];
+				$type = $val['type'];
+			}
+			$sql .= $this->parse_val( $val, $type ) . ",";
+			
 		}
 		$sql = substr($sql,0,(strlen($sql)-1));
 		$sql .= ")";
@@ -547,7 +575,7 @@ class Mason {
 				if ( !in_array($this->table_prefix . $table, $existing_tables) ) {
 					$sql = "CREATE TABLE `" . $this->table_prefix . $table . "` (";
 					foreach ( $attributes['columns'] as $column => $properties ) { 
-						$sql .= $comma . "`" . $column . "` " . $properties . ",";
+						$sql .= "`" . $column . "` " . $properties . ",";
 					}
 					$sql = substr($sql,0,(strlen($sql)-1));
 					if ( isset($attributes['primary_key']) && strlen($attributes['primary_key']) > 0 ) {
