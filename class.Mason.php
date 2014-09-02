@@ -406,7 +406,15 @@ class Mason {
 	* @param 	mixed 	$columns 	An array of column names, a string of comma separated column names, or a single column name (or *) to return
 	* @return 	mixed 				FALSE on failure, result set on success
 	*/
-	public function select( $table, $where = FALSE, $columns = '*' ) {
+	public function select( $table, $where = FALSE, $columns = '*', $args = array() ) {
+
+		$args_pre = array(
+			'order_by' => ''
+		,	'order_dir' => 'ASC'
+		,	'limit' => FALSE
+		);
+		$args = array_merge($args_pre,$args);
+
 		if ( !$this->is_valid_table($table) ) {
 			$this->set_status(504);
 			return FALSE;
@@ -441,10 +449,16 @@ class Mason {
 			$begin = TRUE;
 			foreach ( $where['columns'] as $column=>$attrs ) {
 				if ( !isset($attrs['operator']) ) { $attrs['operator'] = '='; }
-				if ( $begin === FALSE ) { $sql .= ' ' . $where['correlation']; }
+				if ( $begin === FALSE ) { $sql .= ' ' . $where['correlation'] . ' '; }
 				$sql .= $column . " " . $attrs['operator'] . " " . $this->parse_val( $attrs['value'], $attrs['type'] ) . " ";
 				$begin = FALSE;
 			}
+		}
+		if ( $args['order_by'] && $args['order_by'] != '' ) {
+			$sql .= " ORDER BY " . $args['order_by'] . " " . $args['order_dir'];
+		}
+		if ( $args['limit'] !== FALSE ) {
+			$sql .= " LIMIT " . $args['limit'];
 		}
 		$result = $this->run_query($sql);
 		return $result;

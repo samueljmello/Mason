@@ -53,8 +53,8 @@ date = can be fed date strings or timestamp. formats using date("Y-m-d H:i:s")
 ```
 
 
-<em>select( $table, $where, $columns )</em><br/>
-Used to build a select statement. $where and $columns are optional and can be either string or array. See examples:
+<em>select( $table, $where = FALSE, $columns = '*', $args = array() )</em><br/>
+Used to build a select statement. $where, $columns and $args are optional. See examples:
 
 ```php
 $where = "ID = '1' AND column_1 = '2'"
@@ -77,6 +77,8 @@ $where = array(
 	)
 );
 
+---
+
 $columns = "ID, column_1, column_2";
 
 /* OR */
@@ -85,6 +87,14 @@ $columns = array(
 	'ID'
 ,	'column_1'
 ,	'column_2'
+);
+
+---
+
+$args = array(
+	'order_by' => 'column_1'
+,	'order_dir' => 'ASC'
+,	'limit' => '1' // OR 10, 10 to offset and paginate
 );
 ```
 
