@@ -4,21 +4,10 @@
 * Simple MySQL builder class
 *
 * @package 	Mason
-* @author 	Samuel Mello of Clark Nidkel Powell (http://clarknikdelpowell.com
-* @version 	1.3
-*
-* This program is free software; you can redistribute it and/or modify
-* it under the terms of the GNU General Public License, version 2 (or later),
-* as published by the Free Software Foundation.
-* 
-* This program is distributed in the hope that it will be useful,
-* but WITHOUT ANY WARRANTY; without even the implied warranty of
-* MERCHANTABILITY or FITNESS FOR A PARTICULAR PURPOSE.  See the
-* GNU General Public License for more details.
-* 
-* You should have received a copy of the GNU General Public License
-* along with this program; if not, write to the Free Software
-* Foundation, Inc., 51 Franklin St, Fifth Floor, Boston, MA  02110-1301  USA
+* @author 	Samuel Mello of Clark Nidkel Powell
+* @link 	http://www.clarknikdelpowell.com
+* @version 	1.4.1
+* @license 	http://opensource.org/licenses/gpl-license.php GNU Public License
 */
 class Mason {
 
@@ -159,7 +148,7 @@ class Mason {
 		$functions = '';
 		foreach ( $backtraces as $backtrace ) { 
 			if ( $backtrace['function'] !== 'set_status' ) {
-				$functions = trim($backtrace['class'] . '->' . $backtrace['function'] . ', ' . $functions); 
+				$functions = trim((isset($backtrace['class']) ? $backtrace['class'] . '->' : '') . $backtrace['function'] . ', ' . $functions); 
 			}
 		}
 		$functions = substr($functions,0,strlen($functions)-1);
@@ -207,6 +196,7 @@ class Mason {
 	* @return 	mixed 			False when failed, result set on success
 	*/
 	public function run_query( $sql, $type = 'select' ) {
+		
 		array_unshift($this->queries, $sql);
 		$conn = $this->connection;
 		if ( $conn ) {
@@ -360,6 +350,7 @@ class Mason {
 	protected function parse_val( $value, $type = 'text' ) {
 		$replaced = $value;
 		$quotes = TRUE;
+		if (is_numeric($replaced)) { $type = 'number'; }
 		switch ($type) {
 			default:
 			case 'html':
@@ -404,6 +395,7 @@ class Mason {
 	* @param 	string 	$table 		The table name to select from
 	* @param 	array 	$where 		An associative array of data or a string
 	* @param 	mixed 	$columns 	An array of column names, a string of comma separated column names, or a single column name (or *) to return
+	* @param 	array 	$args 		Used to set order_by, order_dir, and limit
 	* @return 	mixed 				FALSE on failure, result set on success
 	*/
 	public function select( $table, $where = FALSE, $columns = '*', $args = array() ) {
@@ -436,7 +428,7 @@ class Mason {
 			$begin = TRUE;
 			foreach ( $columns as $column ) {
 				if ( $begin === FALSE ) { $sql .= ', '; }
-				$sql .= $column;
+				$sql .= '`' . $column . '`';
 				$begin = FALSE;
 			}
 		}
@@ -450,12 +442,12 @@ class Mason {
 			foreach ( $where['columns'] as $column=>$attrs ) {
 				if ( !isset($attrs['operator']) ) { $attrs['operator'] = '='; }
 				if ( $begin === FALSE ) { $sql .= ' ' . $where['correlation'] . ' '; }
-				$sql .= $column . " " . $attrs['operator'] . " " . $this->parse_val( $attrs['value'], $attrs['type'] ) . " ";
+				$sql .= "`" . $column . "` " . $attrs['operator'] . " " . $this->parse_val( $attrs['value'], $attrs['type'] ) . " ";
 				$begin = FALSE;
 			}
 		}
 		if ( $args['order_by'] && $args['order_by'] != '' ) {
-			$sql .= " ORDER BY " . $args['order_by'] . " " . $args['order_dir'];
+			$sql .= " ORDER BY `" . $args['order_by'] . "` " . $args['order_dir'];
 		}
 		if ( $args['limit'] !== FALSE ) {
 			$sql .= " LIMIT " . $args['limit'];
@@ -469,7 +461,7 @@ class Mason {
 	*
 	* @since 	1.0
 	* @param 	string 	$table 	The table name to update
-	* @param 	int 	$ids 	An array of column_name=>ID to delete
+	* @param 	int 	$ids 	An array of column_name=>ID to update
 	* @param 	array 	$vals 	An associative array of column_name => value pairs to update
 	* @return 	mixed 			FALSE on failure to create SQL, result set on success
 	*/
@@ -500,7 +492,7 @@ class Mason {
 				$val = $val['value'];
 				$type = $val['type'];
 			}
-			$sql .= $ids['column'] . " = " . $this->parse_val( $val, $type );
+			$sql .= "`" . $ids['column'] . "` = " . $this->parse_val( $val, $type );
 			$begin = FALSE;
 		}
 		$result = $this->run_query($sql);
@@ -526,15 +518,20 @@ class Mason {
 		}
 		$sql = "INSERT INTO " . $table . " (";
 		foreach ( $vals as $key=>$val ) {
-			$sql .= $key . ",";
+			$sql .= "`" . $key . "`,";
 		}
 		$sql = substr($sql,0,(strlen($sql)-1));
 		$sql .= ") VALUES (";
 		foreach ( $vals as $key=>$val ) {
 			$type = 'html';
 			if ( is_array($val) ) {
-				$val = $val['value'];
-				$type = $val['type'];
+				if (isset($val['value'])) {
+					$val = $val['value'];
+					$type = $val['type'];
+				}
+				else {
+					$val = json_encode($val);
+				}
 			}
 			$sql .= $this->parse_val( $val, $type ) . ",";
 			
@@ -566,7 +563,7 @@ class Mason {
 		$begin = TRUE;
 		foreach ( $ids['values'] as $val ) {
 			if ( $begin === FALSE ) { $sql .= ' OR '; }
-			$sql .= $ids['column'] . " = " . $this->parse_val( $val );
+			$sql .= "`" . $ids['column'] . "` = " . $this->parse_val( $val );
 			$begin = FALSE;
 		}
 		$result = $this->run_query($sql);
@@ -578,7 +575,7 @@ class Mason {
 	*
 	* @since 	1.1
 	* @param 	array 	$tables 	An array of tables to create
-	* @return 	mixed 			FALSE on failure to create SQL, result set on success
+	* @return 	mixed 				FALSE on failure to create SQL, result set on success
 	*/
 	public function create( $tables ) {
 		$existing_tables = $this->tables;
