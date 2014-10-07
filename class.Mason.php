@@ -350,7 +350,7 @@ class Mason {
 	protected function parse_val( $value, $type = 'text' ) {
 		$replaced = $value;
 		$quotes = TRUE;
-		if (is_numeric($replaced)) { $type = 'number'; }
+		//if (is_numeric($replaced)) { $type = 'number'; }
 		switch ($type) {
 			default:
 			case 'html':
@@ -480,7 +480,7 @@ class Mason {
 		}
 		$sql = "UPDATE " . $table . " SET ";
 		foreach ( $vals as $key=>$val ) {
-			$sql .= $key . " = " . $this->parse_val( $val ) . ",";
+			$sql .= "`" . $key . "` = " . $this->parse_val( $val ) . ",";
 		}
 		$sql = substr($sql,0,(strlen($sql)-1));
 		$sql .= " WHERE ";
