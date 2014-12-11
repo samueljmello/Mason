@@ -20,7 +20,7 @@ class Mason {
 	* @var 	array 	$status 		 
 	*/
 
-	protected $connection = FALSE;
+	public $connection = FALSE;
 	protected $connection_vars = array(
 		'host' 	=> '' 		/* database host address */
 	,	'user' 	=> '' 		/* username to authenticate with */
@@ -28,6 +28,7 @@ class Mason {
 	,	'db' 	=> '' 		/* database to select */
 	,	'ext' 	=> FALSE	/* when extending, set to TRUE if you want the load_options function to return it's results */
 	,	'debug' => FALSE 	/* turns on or off debugging */
+	, 	'dir' 	=> '' 		/* Optional path of file to load upon instantiation */
 	);
 	protected $messages = array(
 		0 	=> 'Class has not been instantiated yet'
@@ -69,7 +70,7 @@ class Mason {
 		$conn = $this->reconnect( $args );
 		if ( $conn ) { 
 			$this->load_tables();
-			$options = $this->load_options();
+			$options = $this->load_options($args);
 			if ( $args['ext'] === TRUE ) { $return = $options; }
 		}
 		else { $return = $conn; }
@@ -123,8 +124,11 @@ class Mason {
 
 	/**
 	* Optional function to run at instantiation. Useful when extending this class and you need something to run during __construct()
+	*
+	* @param 	array 	$args 	Optional array of arguments to pass to this function
+	* @since 	1.0
 	*/
-	public function load_options() {
+	public function load_options($args = array()) {
 		return;
 	}
 
@@ -144,14 +148,16 @@ class Mason {
 			if ( $append === TRUE ) { $retmsg .= ': ' . $message; }
 			else { $retmsg = $message; }
 		}
-		$backtraces = debug_backtrace();
 		$functions = '';
-		foreach ( $backtraces as $backtrace ) { 
-			if ( $backtrace['function'] !== 'set_status' ) {
-				$functions = trim((isset($backtrace['class']) ? $backtrace['class'] . '->' : '') . $backtrace['function'] . ', ' . $functions); 
+		if ( $this->connection_vars['debug'] ) {
+			$backtraces = debug_backtrace();
+			foreach ( $backtraces as $backtrace ) { 
+				if ( $backtrace['function'] !== 'set_status' ) {
+					$functions = trim((isset($backtrace['class']) ? $backtrace['class'] . '->' : '') . $backtrace['function'] . ', ' . $functions); 
+				}
 			}
+			$functions = substr($functions,0,strlen($functions)-1);
 		}
-		$functions = substr($functions,0,strlen($functions)-1);
 
 		$status = array(
 			'code' => $id
@@ -188,6 +194,22 @@ class Mason {
 	}
 
 	/**
+	* Tests for result set an
+	*
+	* @since 	1.4.1
+	* @param 	array 	$query 		The query array from run_query
+	* @return 	boolean 			Whether the query has results
+	*/
+	public function has_results( $query ) {
+		if ( $query && isset($query['results']) && is_array($query['results']) && count($query['results']) > 0 ) {
+			return true;
+		}
+		else {
+			return false;
+		}
+	}
+
+	/**
 	* Executes a query against the database with the stored connection
 	* - Can be used externally for manual queries
 	*
@@ -215,11 +237,19 @@ class Mason {
 					$result['insert_id'] = $id; 
 				}
 				if ( is_object($execute) && $num = $execute->num_rows ) {
-					$result['results'] = array();
-					while ( $row = $execute->fetch_assoc() ) { 
-						$result['results'][] = $row; 
+					if ( $num > 0 ) {
+						$result['results'] = array();
+						while ( $row = $execute->fetch_assoc() ) { 
+							$result['results'][] = $row; 
+						}
+					}
+					else {
+						$result['results'] = FALSE;
 					}
 					$execute->free();
+				}
+				else {
+					$result['results'] = FALSE;
 				}
 				array_unshift($this->results, $result);
 				$this->set_status(200);
@@ -441,6 +471,7 @@ class Mason {
 			$begin = TRUE;
 			foreach ( $where['columns'] as $column=>$attrs ) {
 				if ( !isset($attrs['operator']) ) { $attrs['operator'] = '='; }
+				if ( !isset($attrs['type']) ) { $attrs['type'] = 'html'; }
 				if ( $begin === FALSE ) { $sql .= ' ' . $where['correlation'] . ' '; }
 				$sql .= "`" . $column . "` " . $attrs['operator'] . " " . $this->parse_val( $attrs['value'], $attrs['type'] ) . " ";
 				$begin = FALSE;
