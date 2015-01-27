@@ -1,643 +1,648 @@
 <?php
 
 /**
-* Simple MySQL builder class
+* 	Simple SQL builder class with easy method names. Designed to make interaction with
+* 	different versions of SQL easy. Where version 1.0 was intended for MySQLi only, version 2.0.1
+* 	is designed to operate across many database types including MySQLi, MySQL, MSSQL, and SQLSRV.
+* 	In the future, MSSQL PDO, ODBC, and PostGre DB's will be supported.
 *
-* @package 	Mason
-* @author 	Samuel Mello of Clark Nidkel Powell
-* @link 	http://www.clarknikdelpowell.com
-* @version 	1.4.1
-* @license 	http://opensource.org/licenses/gpl-license.php GNU Public License
+* 	@package 	Mason
+* 	@author 	Samuel Mello of Clark Nidkel Powell
+* 	@link 		http://www.clarknikdelpowell.com
+* 	@version 	2.0.1
+* 	@license 	http://opensource.org/licenses/gpl-license.php GNU Public License
+*	@todo 		Build out the prepare function
 */
-class Mason {
+final class Mason {
+
 
 	/**
-	* protected variables (only accessible within this or child classes)
-	*
-	* @var 	MySQL 	$connection 		Stored connection to the database
-	* @var 	array 	$connection_vars 	Array of connection parameters to use in connect_sql()
-	* @var  array 	$messages 			Array of error codes and response messages
-	* @var 	array 	$status 		 
+	* 	@access 	public
+	* 	@var 		string 		$host 			The host name to connect to	
+	* 	@var 		string 		$database 		The database name to perform queries on
+	* 	@var 		string 		$username 		The username to connect with
+	* 	@var 		string 		$password 		The password to connect with
+	* 	@var 		object 		$connection 	The connection object to store
+	* 	@var 		array 		$queries 		All queries performed during object life	
+	* 	@var 		array 		$errors 		Any errors occurred during object life
+	* 	@var 		int 		$status 		The current status (0 for failure, 1 for success)
+	* 	@var 		string 		$method 		The method of database interaction (mysqli, mysql, mssql, & sqlsrv, pdo_sqlsrv)
 	*/
+	public 	$host = '';
+	public 	$database = '';
+	private $username = '';
+	private $password = '';
+	public 	$connection = null;
+	public 	$queries = array();
+	public 	$errors = array();
+	public 	$status = 0;
+	public 	$method = 'mssql';
+	public 	$driver = '';
 
-	public $connection = FALSE;
-	protected $connection_vars = array(
-		'host' 	=> '' 		/* database host address */
-	,	'user' 	=> '' 		/* username to authenticate with */
-	,	'pass' 	=> '' 		/* password to authenticate with */
-	,	'db' 	=> '' 		/* database to select */
-	,	'ext' 	=> FALSE	/* when extending, set to TRUE if you want the load_options function to return it's results */
-	,	'debug' => FALSE 	/* turns on or off debugging */
-	, 	'dir' 	=> '' 		/* Optional path of file to load upon instantiation */
-	);
-	protected $messages = array(
-		0 	=> 'Class has not been instantiated yet'
-	,	200 => 'The task has completed successfully'
-	, 	300 => 'Performing the task requested has failed'
-	,	500 => 'An uknown error has occurred'
-	,	501 => 'Connection to server has failed'
-	,	502 => 'Cannot perform query as connection has not been established'
-	,	503 => 'Query failed'
-	,	504 => 'No table name was provided or this is not a valid table. Check the stored $tables variable for valid table names.'
-	,	505 => 'You must provide a valid array of column_name=>id values to update'
-	,	506 => 'An associative array of column=>value pairs must be provided to update or insert'
-	, 	507 => 'A string or array of statements are the only parameters accepted'
-	,	508 => 'A string or array of column names are the only parameters accepted'
-	);
 
 	/**
-	* Public variables (Available outside of the class)
+	* 	Constructs a new Mason SQL object and sets it's properties, then connects
 	*
-	* @var 	array 	$status 	The stored status array from last recorded operation
-	* @var 	array 	$results 	The stored result set from the last recorded operation	
-	* @var 	array 	$queries 	A list of all recent queries	 
+	* 	@access 	public
+	* 	@param 		array 		$args 		Array of arguments to set
+	* 	@return 	bool 					The success or failure of the connection method
+	* 	@since 		2.0.1
 	*/
-	public $status 	= array();
-	public $results = array();
-	public $queries = array();
-	public $tables 	= array();
-
-	/**
-	* Initial constructor: creates connection
-	*
-	* @since 	1.0
-	* @param 	array 	$args 	Optional arguments to use for the DB connection
-	* @return 	boolean 	 	Whether the connection was successful
-	*/
-	public function __construct( $args = array() ) {
-		$this->debug( $args );
-		$return = FALSE;
-		$conn = $this->reconnect( $args );
-		if ( $conn ) { 
-			$this->load_tables();
-			$options = $this->load_options($args);
-			if ( $args['ext'] === TRUE ) { $return = $options; }
+	public function __construct($args) {
+		$defaults = array(
+			'host' 		=> ''
+		,	'database' 	=> ''
+		,	'username' 	=> ''
+		,	'password' 	=> ''
+		,	'method' 	=> ''
+		,	'driver' 	=> ''
+		);
+		$details = array_merge($defaults,$args);
+		foreach ( $details as $propName=>$propVal ) {
+			if ( property_exists($this, $propName) ) {
+				$this->$propName = $propVal;
+			}
 		}
-		else { $return = $conn; }
-		return $conn;
+		return $this->connect();
 	}
 
+
 	/**
-	* Destructor: destroys DB connection
+	* 	Destructs the object and forces connections closed
 	*
-	* @since 	1.0
-	* @return 	null
+	* 	@access 	public
+	* 	@since 		2.0.1
 	*/
 	public function __destruct() {
-		if ( $conn = $this->connection ) {
-			$conn->close();
+		if ( $this->connection ) {
+			switch ( $this->method ) {
+				case 'mysqli': $this->connection->close(); break;
+				case 'mysql': mysql_close($this->connection); break;
+				case 'mssql': mssql_close($this->connection); break;
+				case 'sqlsrv': sqlsrv_close($this->connection); break;
+			}
 		}
 		return;
 	}
 
-	/**
-	* Turns debugging on or off using the args setting passed from __construct
-	*
-	* @since 	1.0
-	* @return 	null
-	*/
-	protected function debug( $args ) {
-		if ( isset($args['debug']) && $args['debug'] === TRUE ) {
-			error_reporting(E_ALL | E_STRICT);
-			ini_set('display_errors', 1);
-		}
-		return;
-	}
 
 	/**
-	* Connection intermediary to merge optional arguments and perform connection
-	* - Can be used to retry connection if needed (hence reconnect name)
+	* 	Checks to make sure this method exists for Mason to use
 	*
-	* @since 	1.0
-	* @param 	array 	$args 	Optional arguments to use for the DB connection
-	* @return 	boolean		 	Whether the connection was successful or not
+	* 	@access 	private
+	* 	@return 	bool 		$return
+	* 	@since 		2.0.1
 	*/
-	public function reconnect( $args ) {
-		$settings = $this->connection_vars;
-		if ( count($args) > 0 ) { 
-			$settings = array_merge( $settings, $args ); 
-			$this->connection_vars = $settings;
+	private function drivers_exist() {
+		$return = FALSE;
+		switch ($this->method) {
+			case 'mysqli':
+			case 'mysql': 
+			case 'mssql': 
+			case 'sqlsrv':
+				if ( function_exists($this->method . '_connect') ) {
+					$return = TRUE;
+				}
+				break;
+			case 'pdo_odbc':
+			case 'pdo_mysql':
+			case 'pdo_mssql':
+			case 'pdo_sqlsrv':
+				if ( class_exists('PDO') && in_array(str_replace('pdo_', '', $this->method),PDO::getAvailableDrivers()) ) {
+					$return = TRUE;
+				}
+				break;
 		}
-		$conn = $this->connect_sql($settings);
-		return $conn;
+		return $return;
 	}
 
-	/**
-	* Optional function to run at instantiation. Useful when extending this class and you need something to run during __construct()
-	*
-	* @param 	array 	$args 	Optional array of arguments to pass to this function
-	* @since 	1.0
-	*/
-	public function load_options($args = array()) {
-		return;
-	}
 
 	/**
-	* Sets the status code and message using the prebuilt messages and included message
+	* 	Connects to the server and selects the DB using the stored properties set in __construct
 	*
-	* @since 	1.0
-	* @param 	int 	$id 		The error code ID (200, 500, etc [see $messages for all])
-	* @param 	string 	$message 	An optional message to use
-	* @param 	boolean $append 	Whether to append or replace the system message with optional one
-	* @return 	array				Status array with code and message
+	* 	@access 	private
+	* 	@return 	bool 		$return 		The success or failure of the connection
+	* 	@since 		2.0.1
 	*/
-	protected function set_status( $id, $message = '', $append = FALSE ) {
-		$retmsg = $this->messages[$id];
-		if ( strlen($retmsg) == 0 ) { $retmsg = $this->messages[500]; }
-		if ( strlen($message) > 0 ) {
-			if ( $append === TRUE ) { $retmsg .= ': ' . $message; }
-			else { $retmsg = $message; }
-		}
-		$functions = '';
-		if ( $this->connection_vars['debug'] ) {
-			$backtraces = debug_backtrace();
-			foreach ( $backtraces as $backtrace ) { 
-				if ( $backtrace['function'] !== 'set_status' ) {
-					$functions = trim((isset($backtrace['class']) ? $backtrace['class'] . '->' : '') . $backtrace['function'] . ', ' . $functions); 
+	private function connect() {
+		$return = FALSE;
+		$connected = FALSE;
+		if ( $this->drivers_exist() ) {
+			try {
+				switch ($this->method) {
+					case 'mysqli':
+						$connected = new mysqli($this->host, $this->username, $this->password);
+						break;
+					case 'mysql': 
+						@$connected = mysql_connect($this->host, $this->username, $this->password); 
+						break;
+					case 'mssql': 
+						@$connected = mssql_connect($this->host, $this->username, $this->password);
+						break;
+					case 'sqlsrv':
+						$connection_info = array(
+							"Database" 	=> $this->database
+						,	"UID" 		=> $this->username
+						,	"PWD" 		=> $this->password
+						);
+						@$connected = sqlsrv_connect($this->host, $connection_info);
+						break;
+					case 'pdo_mysql':
+						@$connected = new PDO('mysql:host=' . $this->host .';dbname=' . $this->database, $this->username, $this->password);
+						break;
+					case 'pdo_mssql':
+						@$connected = new PDO('mssql:host=' . $this->host .';dbname=' . $this->database, $this->username, $this->password);
+						break;
+					case 'pdo_sqlsrv':
+						@$connected = new PDO('sqlsrv:server=' . $this->host .';database=' . $this->database, $this->username, $this->password);
+						break;
+						$this->errors[] = 'Unsuported method being called: ' . $this->method;
+						break;
 				}
 			}
-			$functions = substr($functions,0,strlen($functions)-1);
-		}
-
-		$status = array(
-			'code' => $id
-		,	'message' => $retmsg 
-		,	'operation' => $functions
-		);
-		array_unshift($this->status,  $status);
-		return $this->status;
-	}
-
-	/**
-	* Connect to MySQL server
-	*
-	* @since 	1.0
-	* @param 	array 	$settings 	The merged array passed from either __construct() or reconnect()
-	* @return 	boolean 			Whether the connection was succesful or not (passed back to parent)
-	*/
-	protected function connect_sql( $settings ) {
-		@$conn = new mysqli( 
-			$settings['host']
-		,	$settings['user']
-		,	$settings['pass']
-		,	$settings['db']
-		);
-		if ( $conn && !$conn->connect_errno ) {
-			$this->connection = $conn;
-			$this->set_status(200);
-			return TRUE;
+			catch(Exception $e) {
+				$this->errors[] = $e->getMessage();
+			}
 		}
 		else {
-			$this->set_status( 501, $conn->connect_error, TRUE );
-			return FALSE;
+			$this->errors[] = 'Server does not support this method or driver is not installed.';
 		}
-	}
-
-	/**
-	* Tests for result set an
-	*
-	* @since 	1.4.1
-	* @param 	array 	$query 		The query array from run_query
-	* @return 	boolean 			Whether the query has results
-	*/
-	public function has_results( $query ) {
-		if ( $query && isset($query['results']) && is_array($query['results']) && count($query['results']) > 0 ) {
-			return true;
+		if ( $connected ) {
+			$this->connection = $connected;
+			switch ($this->method) {
+				case 'mysqli': 
+					@$selected_db = $this->connection->select_db($this->database); 
+					break;
+				case 'mysql': 
+					@$selected_db = mysql_select_db($this->database, $this->connection);
+					break;
+				case 'mssql': 
+					@$selected_db = mssql_select_db($this->database, $this->connection); 
+					break;
+				case 'sqlsrv':
+				case 'pdo_mysql':
+				case 'pdo_mssql':
+				case 'pdo_sqlsrv':
+					$selected_db = TRUE; 
+					break;
+			}
+			if ( $selected_db ) {
+				$this->status = 1;
+				$return = TRUE;
+			}
+			else { 
+				$this->errors[] = 'Could not select database: ' . $this->database;
+			}
 		}
 		else {
-			return false;
+			$this->errors[] = 'Could not connect to server.';
 		}
+		return $return;
 	}
 
+
 	/**
-	* Executes a query against the database with the stored connection
-	* - Can be used externally for manual queries
+	* 	Prepares and executes a query against the server, then returns the results
 	*
-	* @since 	1.0
-	* @param 	string 	$sql 	The SQL statement to execute
-	* @return 	mixed 			False when failed, result set on success
+	* 	@access 	public
+	* 	@param 		string 		$sql 		The SQL statement to execute
+	* 	@return 	mixed 		$return 	TRUE / FALSE on success failure, insert_id on INSERT, and rows on SELECT
+	* 	@since 		2.0.1
 	*/
-	public function run_query( $sql, $type = 'select' ) {
-		
-		array_unshift($this->queries, $sql);
-		$conn = $this->connection;
-		if ( $conn ) {
-
-			$execute = $conn->query( $sql);
-			if ( $execute && !isset($execute->error)) {
-
-				$result = array(
-					'time' => date('m/d/Y g:i:sa')
-				,	'sql' => $sql
-				,	'results' => TRUE
-				,	'insert_id' => FALSE
-				);
-
-				if ( $id = $conn->insert_id ) { 
-					$result['insert_id'] = $id; 
+	public function query($sql) {
+		$return = FALSE;
+		if ( is_string($sql) && strlen($sql) > 0 ) {
+			$result = $this->execute($sql);
+			if ( $result ) {
+				if ( $this->is_select($sql) && !$this->is_pdo_type() ) {
+					$count = $this->count($result);
+					if ( $count > 0 ) {
+						$return = $this->rows($result);
+					}
+					else {
+						if ( $count === FALSE ) {
+							$this->errors[] = 'Error counting rows.';
+						}
+						else {
+							$this->errors[] = 'No results were returned.';
+						}
+					}
 				}
-				if ( is_object($execute) && $num = $execute->num_rows ) {
-					if ( $num > 0 ) {
-						$result['results'] = array();
-						while ( $row = $execute->fetch_assoc() ) { 
-							$result['results'][] = $row; 
+				elseif ( $this->is_insert($sql) ) {
+					$return = $this->insert_id($result);
+				}
+				elseif ( $this->is_pdo_type() ) {
+					$rows = $this->rows($result);
+					if ( count($rows) > 0 ) {
+						$return = $rows;
+					}
+					else {
+						$this->errors[] = 'No results were returned.';
+					}
+				}
+				else {
+					$return = TRUE;
+				}
+			}
+			else {
+				$this->errors[] = 'An error ocurred.';
+			}
+		}
+		else {
+			$this->errors[] = 'No query provided.';
+		}
+		return $return;
+	}
+
+
+	/**
+	* 	Performs the query, used by method 'query'
+	*
+	* 	@access 	private
+	* 	@param 		string 		$sql 		The SQL statement to execute
+	* 	@return 	mixed 		$return 	FALSE on failure, resource on success.
+	* 	@since 		2.0.1
+	*/
+	private function execute($statement) {
+		$result = FALSE;
+		$this->queries[] = $statement;
+		switch ( $this->method ) {
+			case 'mysqli': 
+				@$result = $this->connection->query($statement); 
+				break;
+			case 'mysql': 
+				@$result = mysql_query($statement,$this->connection); 
+				break;
+			case 'mssql':
+				@$result = mssql_query($statement,$this->connection);
+				break;
+			case 'sqlsrv': 
+				@$result = sqlsrv_query($this->connection,$statement,null,array('Scrollable'=>SQLSRV_CURSOR_STATIC)); 
+				break;
+			case 'pdo_mysql':
+			case 'pdo_mssql':
+			case 'pdo_sqlsrv':
+				@$result = $this->connection->query($statement);
+				break;
+		}
+		if ( !$result ) {
+			switch ( $this->method ) {
+				case 'mysqli':
+					$this->errors[] = $this->connection->error;
+					break;
+				case 'mysql':
+					$this->errors[] = mysql_error();
+					break;
+				case 'mssql':
+					$this->errors[] = mssql_get_last_message();
+					break;
+				case 'sqlsrv':
+					$this->errors[] = sqlsrv_errors()[0]['message'];
+					break;
+				case 'pdo_mysql':
+				case 'pdo_mssql':
+				case 'pdo_sqlsrv':
+					$this->errors[] = $this->connection->errorInfo();
+					break;
+			}
+		}
+		return $result;
+	}
+
+
+	/**
+	* 	Prepares the SQL statement
+	*
+	* 	@access 	public
+	* 	@param 		string 		$statement 		The SQL prepare statement
+	* 	@param 		array 		$vals 			The array of values for this prepared statement
+	* 	@since 		2.0.1
+	* 	@todo 		This method under construction
+	*/
+	public function prepared($statement,$vals) {
+		$return = FALSE;
+		$query = array(
+			'sql' => $statement
+		,	'values' => $vals
+		);
+		$this->queries[] = $query;
+		switch ( $this->method ) {
+			case 'mysqli': 
+				$this->errors[] = 'Under construction.';
+				break;
+			case 'mysql': 
+			case 'mssql':
+			case 'sqlsrv': 
+				$this->errors[] = 'Does not support prepare statements.';
+				break;
+			case 'pdo_mysql':
+			case 'pdo_mssql':
+			case 'pdo_sqlsrv':
+				try {
+					$prepared = $this->connection->prepare($statement);
+					$exec = $prepared->execute($vals);
+					if ( $exec ) {
+						if ( $this->is_select($statement) || $this->is_mssql_type() ) {
+							$return = $prepared->fetchAll(PDO::FETCH_ASSOC);
+						}
+						elseif ( $this->is_insert($statement) ) {
+							$return = $this->connection->lastInsertId();
+						}
+						else {
+							$return = TRUE;
 						}
 					}
 					else {
-						$result['results'] = FALSE;
+						$error = $prepared->errorInfo();
+						$error['sql'] = $query;
+						$this->errors[] = $error;
 					}
-					$execute->free();
 				}
-				else {
-					$result['results'] = FALSE;
+				catch( PDOException $e ) {
+					$this->errors[] = $e;
 				}
-				array_unshift($this->results, $result);
-				$this->set_status(200);
-				return $result;
-			}
-			else { 
-				$this->set_status( 503, $conn->error, TRUE ); 
-				return FALSE;
-			}
-		}
-		else { 
-			$this->set_status(502);
-			return FALSE;
-		}
-	}
-
-	/**
-	* Loads tables from DB for validation
-	*
-	* @since 	1.0
-	* @return 	boolean 	FALSE on fail, TRUE on success
-	*/
-	protected function load_tables() {
-		$conn = $this->connection;
-		if ( $conn ) {
-			$execute = $conn->query("SELECT * FROM information_schema.tables", MYSQLI_USE_RESULT);
-			if ( $execute && !isset($execute->error)) {
-				$db = $this->connection_vars['db'];
-				$tables = array();
-				while ( $row = $execute->fetch_assoc() ) { 
-					if ( $row['TABLE_SCHEMA'] === $db )
-					$tables[] = $row['TABLE_NAME']; 
-				}
-				$execute->free();
-				$this->tables = $tables;
-				$this->set_status(200);
-				return TRUE;
-			}
-			else {
-				$this->set_status( 503, $conn->error, TRUE ); 
-				return FALSE;
-			}
-		}
-		else { 
-			$this->set_status(502);
-			return FALSE;
-		}
-	}
-
-	/**
-	* Validates table names passed with tables loaded from the database
-	*
-	* @since 	1.0
-	* @param 	string 		$table 	The table name to check
-	* @return 	boolean 			TRUE on success, FALSE no failure
-	*/
-	protected function is_valid_table( $table ) {
-		$tables = $this->tables;
-		if ( is_string($table) || strlen($table) > 0 && count($tables) > 0 && in_array($table,$tables) ) { return TRUE; }
-		else { return FALSE; };
-	}
-
-	/**
-	* Gets the requested var from child functions
-	*
-	* @since 	1.0
-	* @param 	string 		$what 	The variable to get
-	* @param 	boolean 	$all 	If is array, whether or not to get all entries, or just the most recent
-	* @return 	mixed 				FALSE on failure, the requested variable on success
-	*/
-	protected function get_var( $what, $all = FALSE ) {
-		if ( isset($this->$what) ) {
-			if ( $all === FALSE && is_array($this->$what) ) { 
-				$arr = $this->$what;
-				if ( count($arr) > 0 ) { return $arr[0]; }
-				else { return array(); } 
-			}
-			else { return $this->$what; }
-			$this->set_status(200);
-		}
-		else { 
-			return FALSE; 
-			$this->set_status(300);
-		}
-	}
-
-	/**
-	* Gets the stored result set generated from run_query()
-	*
-	* @since 	1.0
-	* @param 	boolean 	$all 	Whether or not to get all results, or just the recent one
-	* @return 	mixed 				The results of get_var()
-	*/
-	public function get_results( $all = FALSE ) {
-		return $this->get_var( 'results', $all );
-	}
-
-	/**
-	* Gets the stored queries recorded when using run_query()
-	*
-	* @since 	1.0
-	* @param 	boolean 	$all 	Whether or not to get all queries, or just the recent one
-	* @return 	mixed 				The results of get_var()
-	*/
-	public function get_queries( $all = FALSE ) {
-		return $this->get_var( 'queries', $all );
-	}
-
-	/**
-	* Gets the current status array for reading
-	*
-	* @since 	1.0
-	* @return 	array 	The status array retreived
-	*/
-	public function get_status( $all = FALSE ) {
-		return $this->get_var( 'status', $all );
-	}
-
-
-	/**
-	* Takes values passed into it and performs validation / stripping based on type
-	*
-	* @since 	1.0
-	* @param 	mixed 	$value 	The value to parse
-	* @param 	string 	$type 	The type of parse to perform (default: text)
-	* @return 	mixed 			The parsed value
-	*/
-	protected function parse_val( $value, $type = 'text' ) {
-		$replaced = $value;
-		$quotes = TRUE;
-		//if (is_numeric($replaced)) { $type = 'number'; }
-		switch ($type) {
-			default:
-			case 'html':
-				$replaced =  $replaced;
 				break;
-			case 'text':
-				$replaced = strip_tags($replaced);
-				break;
-			case 'number':
-				$replaced = preg_replace("/[^0-9\.\$]/","",$replaced);
-				$quotes = FALSE;
-				break;
-			case 'phone':
-				$replaced = preg_replace("/[^0-9\+]/","",$replaced);
-				break;
-			case 'date':
-				$replaced = $this->mysql_date($replaced);
-				break;
-		}
-		$replaced = $this->connection->real_escape_string( $replaced );
-		if ( $quotes !== FALSE ) { $replaced = "'" . $replaced . "'"; }
-		return $replaced;
-	}
-
-	/**
-	* Formats the timestamp for MySQL
-	*
-	* @since 	1.3
-	* @param 	mixed 	$val 	The value to conver to date
-	* @return 	date 			The properly formatted date string
-	*/
-	protected function mysql_date( $val ) {
-		if ( is_numeric($val) ) { $settime = $val; }
-		elseif ( $timestamp = strtotime($val) ) { $settime = $timestamp; }
-		return date("Y-m-d H:i:s", $settime);
-	}
-	
-	/**
-	* Builds an SQL select statement and returns the results
-	*
-	* @since 	1.0
-	* @param 	string 	$table 		The table name to select from
-	* @param 	array 	$where 		An associative array of data or a string
-	* @param 	mixed 	$columns 	An array of column names, a string of comma separated column names, or a single column name (or *) to return
-	* @param 	array 	$args 		Used to set order_by, order_dir, and limit
-	* @return 	mixed 				FALSE on failure, result set on success
-	*/
-	public function select( $table, $where = FALSE, $columns = '*', $args = array() ) {
-
-		$args_pre = array(
-			'order_by' => ''
-		,	'order_dir' => 'ASC'
-		,	'limit' => FALSE
-		);
-		$args = array_merge($args_pre,$args);
-
-		if ( !$this->is_valid_table($table) ) {
-			$this->set_status(504);
-			return FALSE;
-		}
-		if ( ( is_string($where) && strlen($where) == 0 ) || ( is_array($where) && (!isset($where['columns']) || count($where['columns']) == 0 ) ) ) {
-			$this->set_status(507);
-			return FALSE;
-		}
-		if ( ( is_string($columns) && strlen($columns) == 0 ) || ( is_array($columns) && count($columns) == 0 ) ) {
-			$this->set_status(508);
-			return FALSE;
-		}
-		if ( is_array($where) && !isset($where['correlation']) ) { $where['correlation'] = 'AND'; }
-		$sql = "SELECT ";
-		if ( is_string($columns) ) {
-			$sql .= $columns;
-		}
-		elseif ( is_array($columns) ) {
-			$begin = TRUE;
-			foreach ( $columns as $column ) {
-				if ( $begin === FALSE ) { $sql .= ', '; }
-				$sql .= '`' . $column . '`';
-				$begin = FALSE;
-			}
-		}
-		$sql .= " FROM " . $table;
-		if ( is_string($where) ) {
-			$sql .= " WHERE " . $where;
-		}
-		elseif ( is_array($where) ) {
-			$sql .= " WHERE ";
-			$begin = TRUE;
-			foreach ( $where['columns'] as $column=>$attrs ) {
-				if ( !isset($attrs['operator']) ) { $attrs['operator'] = '='; }
-				if ( !isset($attrs['type']) ) { $attrs['type'] = 'html'; }
-				if ( $begin === FALSE ) { $sql .= ' ' . $where['correlation'] . ' '; }
-				$sql .= "`" . $column . "` " . $attrs['operator'] . " " . $this->parse_val( $attrs['value'], $attrs['type'] ) . " ";
-				$begin = FALSE;
-			}
-		}
-		if ( $args['order_by'] && $args['order_by'] != '' ) {
-			$sql .= " ORDER BY `" . $args['order_by'] . "` " . $args['order_dir'];
-		}
-		if ( $args['limit'] !== FALSE ) {
-			$sql .= " LIMIT " . $args['limit'];
-		}
-		$result = $this->run_query($sql);
-		return $result;
-	}
-
-	/**
-	* Builds an SQL update statement modify rows based on ID
-	*
-	* @since 	1.0
-	* @param 	string 	$table 	The table name to update
-	* @param 	int 	$ids 	An array of column_name=>ID to update
-	* @param 	array 	$vals 	An associative array of column_name => value pairs to update
-	* @return 	mixed 			FALSE on failure to create SQL, result set on success
-	*/
-	public function update( $table, $ids, $vals ) {
-		if ( !$this->is_valid_table($table) ) {
-			$this->set_status(504);
-			return FALSE;
-		}
-		if ( !is_array($ids) || !isset($ids['values']) || !isset($ids['column']) || count($ids) == 0 ) {
-			$this->set_status(505);
-			return FALSE;
-		}
-		if ( count($vals) == 0 ) {
-			$this->set_status(506);
-			return FALSE;
-		}
-		$sql = "UPDATE " . $table . " SET ";
-		foreach ( $vals as $key=>$val ) {
-			$sql .= "`" . $key . "` = " . $this->parse_val( $val ) . ",";
-		}
-		$sql = substr($sql,0,(strlen($sql)-1));
-		$sql .= " WHERE ";
-		$begin = TRUE;
-		foreach ( $ids['values'] as $val ) {
-			if ( $begin === FALSE ) { $sql .= ' OR '; }
-			$type = 'html';
-			if ( is_array($val) ) {
-				$val = $val['value'];
-				$type = $val['type'];
-			}
-			$sql .= "`" . $ids['column'] . "` = " . $this->parse_val( $val, $type );
-			$begin = FALSE;
-		}
-		$result = $this->run_query($sql);
-		return $result;
-	}
-
-	/**
-	* Builds an SQL insert statement to create new rows
-	*
-	* @since 	1.0
-	* @param 	string 	$table 	The table name to add the row into
-	* @param 	array 	$vals 	An associative array of column_name => value pairs to insert
-	* @return 	mixed 			FALSE on failure to create SQL, result set on success
-	*/
-	public function insert( $table, $vals ) {
-		if ( !$this->is_valid_table($table) ) {
-			$this->set_status(504);
-			return FALSE;
-		}
-		if ( count($vals) == 0 ) {
-			$this->set_status(506);
-			return FALSE;
-		}
-		$sql = "INSERT INTO " . $table . " (";
-		foreach ( $vals as $key=>$val ) {
-			$sql .= "`" . $key . "`,";
-		}
-		$sql = substr($sql,0,(strlen($sql)-1));
-		$sql .= ") VALUES (";
-		foreach ( $vals as $key=>$val ) {
-			$type = 'html';
-			if ( is_array($val) ) {
-				if (isset($val['value'])) {
-					$val = $val['value'];
-					$type = $val['type'];
-				}
-				else {
-					$val = json_encode($val);
-				}
-			}
-			$sql .= $this->parse_val( $val, $type ) . ",";
-			
-		}
-		$sql = substr($sql,0,(strlen($sql)-1));
-		$sql .= ")";
-		$result = $this->run_query($sql);
-		return $result;
-	}
-
-	/**
-	* Builds an SQL insert statement to delete rows
-	*
-	* @since 	1.0
-	* @param 	string 	$table 	The table name to add the row into
-	* @param 	int 	$ids 	An array of column_name=>ID to delete
-	* @return 	mixed 			FALSE on failure to create SQL, result set on success
-	*/
-	public function delete( $table, $ids ) {
-		if ( !$this->is_valid_table($table) ) {
-			$this->set_status(504);
-			return FALSE;
-		}
-		if ( !is_array($ids) || !isset($ids['values']) || !isset($ids['column']) || count($ids) == 0 ) {
-			$this->set_status(505);
-			return FALSE;
-		}
-		$sql = "DELETE FROM " . $table . " WHERE ";
-		$begin = TRUE;
-		foreach ( $ids['values'] as $val ) {
-			if ( $begin === FALSE ) { $sql .= ' OR '; }
-			$sql .= "`" . $ids['column'] . "` = " . $this->parse_val( $val );
-			$begin = FALSE;
-		}
-		$result = $this->run_query($sql);
-		return $result;
-	}
-
-	/**
-	* Builds an SQL create statement to create tables
-	*
-	* @since 	1.1
-	* @param 	array 	$tables 	An array of tables to create
-	* @return 	mixed 				FALSE on failure to create SQL, result set on success
-	*/
-	public function create( $tables ) {
-		$existing_tables = $this->tables;
-		$return = FALSE;
-		if ( count($tables) > 0 ) {
-			$i = 0;
-			foreach ( $tables as $table => $attributes ) {
-				if ( !in_array($this->table_prefix . $table, $existing_tables) ) {
-					$sql = "CREATE TABLE `" . $this->table_prefix . $table . "` (";
-					foreach ( $attributes['columns'] as $column => $properties ) { 
-						$sql .= "`" . $column . "` " . $properties . ",";
-					}
-					$sql = substr($sql,0,(strlen($sql)-1));
-					if ( isset($attributes['primary_key']) && strlen($attributes['primary_key']) > 0 ) {
-						$sql .= ", PRIMARY KEY (`" . $attributes['primary_key'] . "`)";
-					}
-					if ( isset($attributes['indexes']) && count($attributes['indexes']) > 0 ) {
-						$sql .= ", INDEX `alt_index` (";
-						foreach ( $attributes['indexes'] as $index => $order ) {
-							$sql .= "`" . $index . "` " . $order .",";
-						}
-						$sql = substr($sql,0,(strlen($sql)-1));
-						$sql .= ")";
-					}
-					$sql .= ");";
-					$return = $this->run_query($sql,'create');
-					$i++;
-				}
-			}
-			if ($i==0) { $return = TRUE; }
 		}
 		return $return;
+	}
+
+	private function prepare($statement) {
+
+	}
+
+
+	/**
+	* 	Applys database-specific escapes on the variable
+	*
+	* 	@access 	private
+	* 	@param 		mixed 		$var 		The variable to escape
+	* 	@return 	mixed 		$var 		The variable after escape applied
+	* 	@since 		2.0.1
+	*/
+	public function escape($var) {
+		$prepared = FALSE;
+		switch ( $this->method ) {
+			case 'mysqli':
+				$var = "'" . $this->connection->real_escape_string($var) . "'";
+				break;
+			case 'mysql':
+				$var = "'" . mysql_real_escape_string($var) . "'";
+				break;
+			case 'pdo_mysql':
+				$var = "'" . str_replace("'","\\'",$var) . "'"; 
+				break;
+			case 'sqlsrv':
+			case 'mssql':
+			case 'pdo_mssql':
+			case 'pdo_sqlsrv':
+				$var = "'" .str_replace("'","''",$var) . "'";
+				break;
+		}
+		return $var;
+	}
+
+
+	/**
+	* 	Counts the results from a returned resource
+	*
+	* 	@access 	private
+	* 	@param 		resource 	$resource 		The resource returned from the execute method
+	* 	@return 	int 		$count 			The number of rows returned
+	* 	@since 		2.0.1
+	*/
+	private function count($resource) {
+		$count = 0;
+		switch ( $this->method ) {
+			case 'mysqli': 
+				$count = $resource->num_rows;
+				break;
+			case 'mysql': 
+				$count = mysql_num_rows($resource);
+				break;
+			case 'mssql':
+				$count = mssql_num_rows($resource);
+				break;
+			case 'sqlsrv':
+				$count = sqlsrv_num_rows($resource);
+				break;
+		}
+		return $count;
+	}
+
+
+	/**
+	* 	Returns the result set rows from a returned resource
+	*
+	* 	@access 	private
+	* 	@param 		resource 	$resource 		The resource returned from the execute method
+	* 	@return 	mixed 		$rows 			FALSE on failure, array of data on success
+	* 	@since 		2.0.1
+	*/
+	private function rows($resource) {
+		$rows = FALSE;
+		switch ( $this->method ) {
+			case 'mysqli':
+				while ( $row = $resource->fetch_assoc() ) { 
+					if ( !$rows ) {
+						$rows = array();
+					}
+					$rows[] = $row;
+				}
+				break;
+			case 'mysql':
+				while ( $row = mysql_fetch_array($resource) ) {
+					if ( !$rows ) {
+						$rows = array();
+					}
+					$rows[] = $row;
+				}
+				break;
+			case 'mssql':
+				while ( $row = mssql_fetch_array($resource) ) {
+					if ( !$rows ) {
+						$rows = array();
+					}
+					$rows[] = $row;
+				}
+				break;
+			case 'sqlsrv':
+				while ( $row = sqlsrv_fetch_array($resource) ) {
+					if ( !$rows ) {
+						$rows = array();
+					}
+					$rows[] = $row;
+				}
+				break;
+			case 'pdo_mysql':
+			case 'pdo_mssql':
+			case 'pdo_sqlsrv':
+				$rows = $resource->fetchAll(PDO::FETCH_ASSOC);
+				break;
+		}
+		return $rows;
+	}
+
+
+	/**
+	* 	Gets the insert id of the last INSERT query executed
+	*
+	* 	NOTES: Since MSSQL and SQLSRV have no insert_id function, you must append your insert queries
+	* 	with OUTPUT INSERT.* (where * is your ID column name) before VALUES. This will send back an array
+	* 	of data with the column as the result.
+	*
+	*	Example: INSERT INTO table (column_1, column_2) OUTPUT INSERTED.column_ID VALUES ('value_1','value_2')
+	*
+	* 	@access 	private
+	* 	@return 	mixed 		$id 		FALSE on failure, ID for inserted row on success
+	* 	@since 		2.0.1
+	*/
+	private function insert_id($result) {
+		$id = FALSE;
+		switch ( $this->method ) {
+			case 'mysqli':
+				$id = $this->connection->insert_id;
+				break;
+			case 'mysql':
+				$id = mysqli_insert_id($this->connection);
+				break;
+			case 'mssql':
+			case 'sqlsrv':
+				$id = $this->rows($result);
+				break;
+			case 'pdo_mysql':
+			case 'pdo_mssql':
+			case 'pdo_sqlsrv':
+				$id = $this->connection->lastInsertId();
+				break;
+		}
+		return $id;
+	}
+
+
+	/**
+	* 	Checks to see if this is mssql srvr type
+	*
+	* 	@access 	public
+	* 	@return 	bool
+	* 	@since 		2.0.1
+	*/
+	public function is_mssql_type() {
+		$mssql_methods = array(
+			'mssql'
+		,	'sqlsrv'
+		,	'pdo_mssql'
+		,	'pdo_sqlsrv'
+		);
+		if ( in_array($this->method, $mssql_methods) ) {
+			return TRUE;
+		}
+		else {
+			return FALSE;
+		}
+	}
+
+
+	/**
+	* 	Checks to see if this is pdo type
+	*
+	* 	@access 	public
+	* 	@return 	bool
+	* 	@since 		2.0.1
+	*/
+	public function is_pdo_type() {
+		$mssql_methods = array(
+			'pdo_mssql'
+		,	'pdo_mysql'
+		,	'pdo_sqlsrv'
+		);
+		if ( in_array($this->method, $mssql_methods) ) {
+			return TRUE;
+		}
+		else {
+			return FALSE;
+		}
+	}
+
+	/**
+	* 	Returns an array of tables in this database
+	*
+	* 	@access 	public
+	* 	@return 	array 		$return 		The array of tables retrieved
+	* 	@since 		2.0.1
+	*/
+	public function tables() {
+		$return = array();
+		$result = $this->query('SELECT Distinct TABLE_NAME FROM information_schema.TABLES');
+		if ( $result && is_array($result) && count($result) > 0 ) {
+			foreach ( $result as $row ) {
+				$return[] = $row['TABLE_NAME'];
+			}
+		}
+		return $return;
+	}
+
+
+	/**
+	* 	Tests SQL statement to see if it's a select and returns TRUE/FALSE
+	*
+	* 	@access 	public
+	* 	@return 	bool
+	* 	@since 		2.0.1
+	*/
+	public function is_select($statement) {
+		if ( stripos(trim($statement), 'SELECT') === 0 ) {
+			return TRUE;
+		}
+		else {
+			return FALSE;
+		}
+	}
+
+	/**
+	* 	Tests SQL statement to see if it's an insert and returns TRUE/FALSE
+	*
+	* 	@access 	public
+	* 	@return 	bool
+	* 	@since 		2.0.1
+	*/
+	public function is_insert($statement) {
+		if ( stripos(trim($statement), 'INSERT') === 0 ) {
+			return TRUE;
+		}
+		else {
+			return FALSE;
+		}
+	}
+
+	/**
+	* 	Tests SQL statement to see if it's an update and returns TRUE/FALSE
+	*
+	* 	@access 	public
+	* 	@return 	bool
+	* 	@since 		2.0.1
+	*/
+	public function is_update($statement) {
+		if ( stripos(trim($statement), 'UPDATE') === 0 ) {
+			return TRUE;
+		}
+		else {
+			return FALSE;
+		}
+	}
+
+	/**
+	* 	Tests SQL statement to see if it's a delete and returns TRUE/FALSE
+	*
+	* 	@access 	public
+	* 	@return 	bool
+	* 	@since 		2.0.1
+	*/
+	public function is_delete($statement) {
+		if ( stripos(trim($statement), 'DELETE') === 0 ) {
+			return TRUE;
+		}
+		else {
+			return FALSE;
+		}
 	}
 }
