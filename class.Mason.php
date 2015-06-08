@@ -342,7 +342,7 @@ final class Mason {
 					$prepared = $this->connection->prepare($statement);
 					$exec = $prepared->execute($vals);
 					if ( $exec ) {
-						if ( $this->is_select($statement) || $this->is_mssql_type() ) {
+						if ( ( $this->is_select($statement) || $this->is_mssql_type() ) && !$this->is_update($statement) ) {
 							$return = $prepared->fetchAll(PDO::FETCH_ASSOC);
 						}
 						elseif ( $this->is_insert($statement) ) {
