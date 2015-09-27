@@ -7,9 +7,8 @@
 * 	In the future, MSSQL PDO, ODBC, and PostGre DB's will be supported.
 *
 * 	@package 	Mason
-* 	@author 	Samuel Mello of Clark Nidkel Powell
-* 	@link 		http://www.clarknikdelpowell.com
-* 	@version 	2.0.1
+* 	@author 	Samuel Mello
+* 	@version 	2.0.2
 * 	@license 	http://opensource.org/licenses/gpl-license.php GNU Public License
 *	@todo 		Build out the prepare function
 */
