@@ -8,9 +8,8 @@
 *
 * 	@package 	Mason
 * 	@author 	Samuel Mello
-* 	@version 	2.0.2
+* 	@version 	2.0.4
 * 	@license 	http://opensource.org/licenses/gpl-license.php GNU Public License
-*	@todo 		Build out the prepare function
 */
 final class Mason {
 
@@ -27,16 +26,16 @@ final class Mason {
 	* 	@var 		int 		$status 		The current status (0 for failure, 1 for success)
 	* 	@var 		string 		$method 		The method of database interaction (mysqli, mysql, mssql, & sqlsrv, pdo_sqlsrv)
 	*/
-	public 	$host = '';
-	public 	$database = '';
-	private $username = '';
-	private $password = '';
+	public 	$host 		= '';
+	public 	$database 	= '';
+	private $username 	= '';
+	private $password 	= '';
 	public 	$connection = null;
-	public 	$queries = array();
-	public 	$errors = array();
-	public 	$status = 0;
-	public 	$method = 'mssql';
-	public 	$driver = '';
+	public 	$queries 	= array();
+	public 	$errors 	= array();
+	public 	$status 	= 0;
+	public 	$method 	= 'mssql';
+	public 	$driver 	= '';
 
 
 	/**
@@ -318,7 +317,7 @@ final class Mason {
 	* 	@since 		2.0.1
 	* 	@todo 		This method under construction
 	*/
-	public function prepared($statement,$vals) {
+	public function prepared($statement,$vals = array()) {
 		$return = FALSE;
 		$query = array(
 			'sql' => $statement
@@ -327,7 +326,83 @@ final class Mason {
 		$this->queries[] = $query;
 		switch ( $this->method ) {
 			case 'mysqli': 
-				$this->errors[] = 'Under construction.';
+				
+				$prepared = $this->connection->prepare($statement);
+				if ( $prepared ) {
+
+					if ( count($vals) > 0 ) {
+
+
+						$params = array();
+						$param_types = '';
+
+						foreach ( $vals as $key=>$val ) {
+							$param_types .= 's';
+						}
+
+						$params[] = $param_types;
+
+						foreach ( $vals as $key=>$val ) {
+							$params[] = $val;
+						}
+
+						call_user_func_array(array($prepared, 'bind_param'), $this->ref_values($params));
+					}
+
+					
+					$exec = $prepared->execute();
+					if ( $exec ) {
+
+
+						if ( $this->is_insert($statement) ) {
+							$return = $prepared->insert_id;
+						}
+						elseif ( $this->is_select($statement) ) {
+
+							if (method_exists($prepared, 'get_result')) {
+								$result = $prepared->get_result();
+								while ( $results = $result->fetch_assoc()) {
+									$return[] = $results;
+								}
+							}
+							else {
+								$results = array();
+								$meta = $prepared->result_metadata();
+								while ($field = $meta->fetch_field()) { 
+										$var = $field->name; 
+										$$var = null; 
+										$fields[$var] = &$$var;
+								}
+								call_user_func_array(array($prepared,'bind_result'), $fields);
+								$i = 0;
+								while ($prepared->fetch()) {
+										$results[$i] = array();
+										foreach($fields as $k => $v)
+												$results[$i][$k] = $v;
+										$i++;
+								}
+								$return = $results;
+							}
+						}
+						else {
+							$return = true;
+						}
+
+					}
+					else {
+
+						$error['sql'] = $query;
+						$this->errors[] = $this->connection->error;
+					}
+
+				}
+				else {
+
+					$error['sql'] = $query;
+					$this->errors[] = $this->connection->error;
+
+				}
+
 				break;
 			case 'mysql': 
 			case 'mssql':
@@ -365,8 +440,23 @@ final class Mason {
 		return $return;
 	}
 
-	private function prepare($statement) {
 
+	/**
+	* 	Loads referenced values by memory (fix for prepared msqli statements)
+	*
+	* 	@access 	public
+	* 	@return 	array 	The newly configured array
+	* 	@since 		1.0.0
+	*/
+	public function ref_values($arr){
+	    if (strnatcmp(phpversion(),'5.3') >= 0) //Reference is required for PHP 5.3+
+	    {
+	        $refs = array();
+	        foreach($arr as $key => $value)
+	            $refs[$key] = &$arr[$key];
+	        return $refs;
+	    }
+	    return $arr;
 	}
 
 
@@ -582,46 +672,65 @@ final class Mason {
 
 
 	/**
-	* 	Tests SQL statement to see if it's a select and returns TRUE/FALSE
+	* 	Tests SQL statement to see if it's a select
 	*
 	* 	@access 	public
+	* 	@param 		string 	$statement 	The statement to test
 	* 	@return 	bool
 	* 	@since 		2.0.1
 	*/
 	public function is_select($statement) {
-		if ( stripos(trim($statement), 'SELECT') === 0 ) {
-			return TRUE;
-		}
-		else {
-			return FALSE;
-		}
+		return $this->is_type($statement,'SELECT');
 	}
 
 	/**
-	* 	Tests SQL statement to see if it's an insert and returns TRUE/FALSE
+	* 	Tests SQL statement to see if it's an insert
 	*
 	* 	@access 	public
+	* 	@param 		string 	$statement 	The statement to test
 	* 	@return 	bool
 	* 	@since 		2.0.1
 	*/
 	public function is_insert($statement) {
-		if ( stripos(trim($statement), 'INSERT') === 0 ) {
-			return TRUE;
-		}
-		else {
-			return FALSE;
-		}
+		return $this->is_type($statement,'INSERT');
 	}
 
 	/**
-	* 	Tests SQL statement to see if it's an update and returns TRUE/FALSE
+	* 	Tests SQL statement to see if it's an update
 	*
 	* 	@access 	public
+	* 	@param 		string 	$statement 	The statement to test
 	* 	@return 	bool
 	* 	@since 		2.0.1
 	*/
 	public function is_update($statement) {
-		if ( stripos(trim($statement), 'UPDATE') === 0 ) {
+		return $this->is_type($statement,'UPDATE');
+	}
+
+	/**
+	* 	Tests SQL statement to see if it's a delete 
+	*
+	* 	@access 	public
+	* 	@param 		string 	$statement 	The statement to test
+	* 	@return 	bool
+	* 	@since 		2.0.1
+	*/
+	public function is_delete($statement) {
+		return $this->is_type($statement,'DELETE');
+	}
+	
+
+	/**
+	* 	Tests SQL statement to see if it's a specific type
+	*
+	* 	@access 	public
+	* 	@param 		string 	$statement 	The statement to test
+	* 	@param 		string 	$type 		The string value of the type (SELECT, UPDATE, etc)
+	* 	@return 	bool
+	* 	@since 		2.0.3
+	*/
+	private function is_type($statement,$type) {
+		if ( stripos($this->clean($statement), $this->clean($type)) === 0 ) {
 			return TRUE;
 		}
 		else {
@@ -629,19 +738,16 @@ final class Mason {
 		}
 	}
 
+
 	/**
-	* 	Tests SQL statement to see if it's a delete and returns TRUE/FALSE
+	* 	Cleans a string of whitespace, and uppercases all letters (for comaprison only)
 	*
 	* 	@access 	public
-	* 	@return 	bool
-	* 	@since 		2.0.1
+	* 	@param 		string 	$type 	The string to clean
+	* 	@return 	string 			The cleaned string
+	* 	@since 		2.0.3
 	*/
-	public function is_delete($statement) {
-		if ( stripos(trim($statement), 'DELETE') === 0 ) {
-			return TRUE;
-		}
-		else {
-			return FALSE;
-		}
+	private function clean($string) {
+		return trim(strtoupper($string));
 	}
 }

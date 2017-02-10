@@ -4,4 +4,4 @@ Mason is an SQL builder class for constructing queries and prepared statements w
 
 Version
 =====
-Current version is 2.0.1
+Current version is 2.0.4
