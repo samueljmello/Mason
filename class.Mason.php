@@ -23,7 +23,7 @@ final class Mason {
 	* 	@var 		object 		$connection 	The connection object to store
 	* 	@var 		array 		$queries 		All queries performed during object life	
 	* 	@var 		array 		$errors 		Any errors occurred during object life
-	* 	@var 		int 		$status 		The current status (0 for failure, 1 for success)
+	* 	@var 		int 			$status 		The current status (0 for failure, 1 for success)
 	* 	@var 		string 		$method 		The method of database interaction (mysqli, mysql, mssql, & sqlsrv, pdo_sqlsrv)
 	*/
 	public 	$host 		= '';
@@ -34,7 +34,7 @@ final class Mason {
 	public 	$queries 	= array();
 	public 	$errors 	= array();
 	public 	$status 	= 0;
-	public 	$method 	= 'mssql';
+	public 	$method 	= 'mysqli';
 	public 	$driver 	= '';
 
 
